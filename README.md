@@ -10,7 +10,9 @@ install `hipr`, then run
 ```
 hipr install hipr-aliasing
 ```
-to install the aliasing middleware, and spin up your hipr server:
+to install the aliasing middleware, and spin up your hipr server (assuming you have an hsd root resolver on port 5349):
 ```
-hipr hipr-aliasing
+hipr hipr-aliasing 127.0.0.1:5333 120.0.0.1:5349
 ```
+
+to test if it's working, try running `dig @127.0.0.1 -p 5333 luke.dsbu +short`. you should get `66.42.108.201`.
