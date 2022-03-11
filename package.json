@@ -1,0 +1,21 @@
+{
+  "name": "hipr-aliasing",
+  "version": "0.1.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Luke Burns",
+  "license": "UNLICENSED",
+  "dependencies": {
+    "blake3": "^2.1.7",
+    "bs32": "^0.1.6"
+  },
+  "peerDependencies": {
+    "bns": "^0.15.0"
+  },
+  "devDependencies": {
+    "hipr": "^0.2.1"
+  }
+}
