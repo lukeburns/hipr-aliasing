@@ -3,7 +3,7 @@ const base32 = require('bs32')
 const blake3 = require('blake3')
 
 module.exports = () => ({
-  hostname: ':data._aliasing.', 
+  hostname: ':data.:protocol(_aliasing).', 
   handler
 })
 
