@@ -7,7 +7,7 @@ module.exports = () => ({
   handler
 })
 
-async function handler ({ data, protocol }, name, type) {
+async function handler ({ data, protocol }, name, type, res, rc, ns) {
   const dataLabels = data.split('.')
   const hip5data = dataLabels[0]
   
@@ -19,23 +19,24 @@ async function handler ({ data, protocol }, name, type) {
 
   // compute alias
   const nameLabels = name.split('.')
-  const sldLabel = nameLabels[0]
+  const count = ns.name.split('.').length
+  const sldLabel = nameLabels[nameLabels.length-(count+1)]
   const alias = util.fqdn(base32.encode(blake3.hash(sldLabel+hip5data)))
+  const nameAlias = name.replace(sldLabel+'.'+ns.name, alias)
 
   // query alias
   let response
   try {
-    response = await this.lookup(alias, types[type])
+    response = await this.lookup(nameAlias, types[type])
   } catch (err) {
     return null
   }
-  // response.question = question
   response.answer = response.answer.map(answer => {
-    answer.name = name
+    answer.name = name 
     return answer
   })
   response.authority = response.authority.map(answer => {
-    answer.name = name
+    answer.name = name 
     return answer
   })
 
