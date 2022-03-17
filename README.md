@@ -4,7 +4,7 @@ Resolve Handshake SLDs trustlessly.
 
 ## Usage
 
-Install `hipr`, then run
+Install [`hipr`](https://github.com/lukeburns/hipr), then run
 ```
 hipr install hipr-aliasing
 ```
