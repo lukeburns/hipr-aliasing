@@ -36,9 +36,7 @@ async function handler ({ data, protocol }, name, type, res, rc, ns) {
   try {
     const res = await this.lookup(nameAlias, types[type]);
     // handle NX Proof
-    if (res.code = codes.NXDOMAIN) {
-      return res;
-    } else {
+    if (res.code !== codes.NXDOMAIN) {
       // this substitution doesn't play nice with dnssec
       // todo: rather than substitution, expect zone for name: this.lookup(name, types[type]).
       res.answer = res.answer.map(answer => {
@@ -54,6 +52,7 @@ async function handler ({ data, protocol }, name, type, res, rc, ns) {
         return answer;
       });
     }
+    return res;
   } catch (err) {
     return empty.resolve(name, types[type]);
   }
