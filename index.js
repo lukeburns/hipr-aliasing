@@ -1,6 +1,8 @@
-const { util, wire: { Question, types } } = require('bns');
+const { util, Zone, wire: { Question, types, codes } } = require('bns');
 const base32 = require('bs32');
 const blake3 = require('blake3');
+
+const empty = new Zone();
 
 module.exports = () => ({
   hostname: ':data.:protocol(_aliasing|aliasing).:gateway?.',
@@ -18,30 +20,41 @@ async function handler ({ data, protocol }, name, type, res, rc, ns) {
   // compute alias
   const nameLabels = name.split('.');
   const count = ns.name.split('.').length;
-  const sldLabel = nameLabels[nameLabels.length - (count + 1)];
-  const alias = util.fqdn(base32.encode(blake3.hash(sldLabel + hip5data)));
-  const nameAlias = name.replace(sldLabel + '.' + ns.name, alias);
+  const subLabels = nameLabels.slice(0, nameLabels.length - count);
+  const subLabel = subLabels[subLabels.length - 1];
+  const realIndex = subLabels.findIndex(x => x[0] !== '_');
 
-  // top-level resolution
-  if (!sldLabel) {
+  if (realIndex < 0) {
     return null;
   }
+
+  const alias = util.fqdn(base32.encode(blake3.hash(subLabel + hip5data)));
+  const domain = subLabel + '.' + ns.name;
+  const nameAlias = name.replace(domain, alias);
 
   // query alias
-  let response;
   try {
-    response = await this.lookup(nameAlias, types[type]);
+    const res = await this.lookup(nameAlias, types[type]);
+    // handle NX Proof
+    if (res.code = codes.NXDOMAIN) {
+      return res;
+    } else {
+      // this substitution doesn't play nice with dnssec
+      // todo: rather than substitution, expect zone for name: this.lookup(name, types[type]).
+      res.answer = res.answer.map(answer => {
+        answer.name = answer.name.replace(alias, domain);
+        return answer;
+      });
+      res.authority = res.authority.map(answer => {
+        answer.name = answer.name.replace(alias, domain);
+        return answer;
+      });
+      res.additional = res.additional.map(answer => {
+        answer.name = answer.name.replace(alias, domain);
+        return answer;
+      });
+    }
   } catch (err) {
-    return null;
+    return empty.resolve(name, types[type]);
   }
-  response.answer = response.answer.map(answer => {
-    answer.name = name;
-    return answer;
-  });
-  response.authority = response.authority.map(answer => {
-    answer.name = name;
-    return answer;
-  });
-
-  return response;
 }
