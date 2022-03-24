@@ -1,6 +1,6 @@
 {
   "name": "hipr-aliasing",
-  "version": "0.3.2",
+  "version": "0.4.0",
   "description": "",
   "main": "index.js",
   "scripts": {
@@ -13,7 +13,7 @@
     "bs32": "^0.1.6"
   },
   "peerDependencies": {
-    "hipr": "^0.4.0",
-    "bns": "^0.15.0"
+    "bns": "^0.15.0",
+    "hipr": "^0.5.0"
   }
 }

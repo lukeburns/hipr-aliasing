@@ -32,28 +32,21 @@ async function handler ({ data, protocol }, name, type, res, rc, ns) {
   const domain = subLabel + '.' + ns.name;
   const nameAlias = name.replace(domain, alias);
 
-  // query alias
-  try {
-    const res = await this.lookup(nameAlias, types[type]);
-    // handle NX Proof
-    if (res.code !== codes.NXDOMAIN) {
-      // this substitution doesn't play nice with dnssec
-      // todo: rather than substitution, expect zone for name: this.lookup(name, types[type]).
-      res.answer = res.answer.map(answer => {
-        answer.name = answer.name.replace(alias, domain);
-        return answer;
-      });
-      res.authority = res.authority.map(answer => {
-        answer.name = answer.name.replace(alias, domain);
-        return answer;
-      });
-      res.additional = res.additional.map(answer => {
-        answer.name = answer.name.replace(alias, domain);
-        return answer;
-      });
-    }
-    return res;
-  } catch (err) {
+  if (res.authority.filter(x => x.name.indexOf(nameAlias) > -1).length > 0) {
     return empty.resolve(name, types[type]);
+  } else {
+    const res = await this.stub.lookup(nameAlias, types.A);
+    res.answer = [];
+    res.question = rc.res.question;
+    res.authority = res.authority.map(answer => {
+      answer.name = answer.name.replace(alias, domain);
+      return answer;
+    });
+    res.additional = res.additional.map(answer => {
+      answer.name = answer.name.replace(alias, domain);
+      return answer;
+    });
+    rc.res = res;
+    return null;
   }
 }
