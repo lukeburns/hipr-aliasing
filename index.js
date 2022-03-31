@@ -90,7 +90,7 @@ async function handler ({ data, protocol }, name, type, res, rc, ns) {
         return null;
       }
 
-      if (process.env.ALIASING_NS) {
+      if (process.env.ALIASING_NS || protocol === '_ns') {
         const rr = new Record();
         rr.name = name;
         rr.type = types.NS;
@@ -102,7 +102,8 @@ async function handler ({ data, protocol }, name, type, res, rc, ns) {
         return null;
       }
 
-      if (process.env.ALIASING_PROXY) {
+      // default mode for now, prob switching to ns to relieve gateways of trust burden
+      if (process.env.ALIASING_PROXY || true) {
         const res = await this.stub.lookup(cname, types[type]);
         res.question = rc.res.question;
         const signed = signResponse(res, zsk, zskPriv, rec => {
