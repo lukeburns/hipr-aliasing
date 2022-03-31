@@ -1,11 +1,32 @@
-const { util, Zone, wire: { Question, types, codes } } = require('bns');
+const {
+  util, dnssec, Zone,
+  wire: {
+    Record,
+    CNAMERecord,
+    NSRecord,
+    SOARecord,
+    Message,
+    Question,
+    types,
+    typesByVal,
+    codes
+  }
+} = require('bns');
+
 const base32 = require('bs32');
 const blake3 = require('blake3');
+const { getAlias } = require('./alias');
+const { ds, zsk, zskPriv, signResponse } = require('./dnssec');
+
+const { hashName } = require('./script.js');
+const { Context } = require('./context.js');
+const context = new Context(process.env.ALIASING_NETWORK, undefined, process.env.ALIASING_API_KEY);
+const { nodeClient, network } = context;
 
 const empty = new Zone();
 
 module.exports = () => ({
-  hostname: ':data.:protocol(_aliasing|aliasing).:gateway?.',
+  hostname: ':data.:protocol(_aliasing|aliasing|_ns).:gateway?.',
   handler
 });
 
@@ -14,67 +35,120 @@ async function handler ({ data, protocol }, name, type, res, rc, ns) {
   const hip5data = dataLabels[dataLabels.length - 1];
 
   if (name.indexOf(protocol) > 0) {
-    return null;
+    return sendSOA();
   }
 
-  // compute alias
   const nameLabels = name.split('.');
   const count = ns.name.split('.').length;
   const subLabels = nameLabels.slice(0, nameLabels.length - count);
-  const subLabel = subLabels[subLabels.length - 1];
   const firstValidIndex = subLabels.findIndex(x => x[0] !== '_');
 
-  if (firstValidIndex < 0) {
-    if (!rc._aliasPassthrough) {
-      rc._aliasPassthrough = true;
-      await this.middleware(rc);
-      const res = rc.res;
+  if (!rc._aliasPassthrough) {
+    rc._aliasPassthrough = true;
+    await this.middleware(rc);
+    const res = rc.res;
 
-      // strict answers only
-      // todo: improve filtering to prevent cache takeovers by TLD owner
+    if (firstValidIndex < 0) {
       res.answer = res.answer.filter(rec => {
         return rec.name === name;
       });
+      res.authority = res.authority.filter(rec => {
+        return rec.name === name;
+      });
+      return sendSOA(res);
+    } else {
+      const subLabel = subLabels[subLabels.length - 1];
+      console.log(`[${protocol}@${ns.name}] ${name} ${type} @ ${subLabel}.${hip5data}`);
 
-      return rc.res;
+      let alias = base32.encode(hashName(subLabel, hip5data));
+
+      if (protocol === '_ns') {
+        console.log('looking for alias')
+        alias = await getAlias(subLabel, hip5data, nodeClient, network);
+        console.log('alias?', alias)
+        if (!alias) {
+          console.log('no alias :(')
+          return empty.resolve(name, type);
+        }
+      }
+
+      alias = util.fqdn(alias);
+
+      const top = nameLabels.slice(nameLabels.length - (count + 1)).join('.');
+      const cname = name.replace(top, alias);
+
+      if (process.env.ALIASING_CNAME) {
+        const rr = new Record();
+        rr.name = name;
+        rr.type = types.CNAME;
+        rr.ttl = 0;
+        rr.data = new CNAMERecord();
+        rr.data.target = cname;
+
+        rc.res.answer = [rr];
+        signResponse(rc.res, zsk, zskPriv);
+        return null;
+      }
+
+      if (process.env.ALIASING_NS) {
+        const rr = new Record();
+        rr.name = name;
+        rr.type = types.NS;
+        rr.ttl = 0;
+        rr.data = new NSRecord();
+        rr.data.ns = cname;
+        rc.res.answer = [rr];
+        signResponse(rc.res, zsk, zskPriv);
+        return null;
+      }
+
+      if (process.env.ALIASING_PROXY) {
+        const res = await this.stub.lookup(cname, types[type]);
+        res.question = rc.res.question;
+        const signed = signResponse(res, zsk, zskPriv, rec => {
+          rec.name = rec.name.replace(cname, name);
+        });
+        rc.res = res;
+        return null;
+      }
     }
-
-    return null;
   }
 
-  const alias = util.fqdn(base32.encode(blake3.hash(subLabel + hip5data)));
-  const domain = subLabel + '.' + ns.name;
-  const nameAlias = name.replace(domain, alias);
+  return null;
+}
 
-  if (res.authority.filter(x => x.name.indexOf(nameAlias) > -1).length > 0) {
-    return empty.resolve(name, types[type]);
-  } else {
-    const res = await this.stub.lookup(nameAlias, types[type]);
+function serial () {
+  const date = new Date();
+  const y = date.getUTCFullYear() * 1e6;
+  const m = (date.getUTCMonth() + 1) * 1e4;
+  const d = date.getUTCDate() * 1e2;
+  const h = date.getUTCHours();
+  return y + m + d + h;
+}
 
-    res.question = rc.res.question;
+function toSOA () {
+  const rr = new Record();
+  const rd = new SOARecord();
 
-    res.answer = res.answer.map(answer => {
-      answer.name = answer.name.replace(alias, domain);
-      return answer;
-    });
+  rr.name = '.';
+  rr.type = types.SOA;
+  rr.ttl = 86400;
+  rr.data = rd;
+  rd.ns = '.';
+  rd.mbox = '.';
+  rd.serial = serial();
+  rd.refresh = 1800;
+  rd.retry = 900;
+  rd.expire = 604800;
+  rd.minttl = 21600;
 
-    res.authority = res.authority.map(answer => {
-      answer.name = answer.name.replace(alias, domain);
-      return answer;
-    });
+  return rr;
+}
 
-    res.additional = res.additional.map(answer => {
-      answer.name = answer.name.replace(alias, domain);
-      return answer;
-    });
-
-    // answer with DS record
-    if (type === 'DS') {
-      return res;
-    }
-
-    // otherwise just pass along referral
-    rc.res = res;
-    return null;
-  }
+function sendSOA (res) {
+  res = res || new Message();
+  res.aa = true;
+  res.authority.push(toSOA());
+  dnssec.signType(res.authority, types.SOA, zsk, zskPriv);
+  return res;
 }

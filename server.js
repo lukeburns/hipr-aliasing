@@ -9,7 +9,8 @@ const { RecursiveServer, createDS } = require('hipr');
 const middleware = require('./');
 
 const server = new RecursiveServer({ tcp: true, inet6: true, edns: true, dnssec: true });
-server.parseOptions({ dnssec: true });
+server.on('error', console.error);
+server.on('log', console.log);
 server.resolver.setStub(rootHost, rootPort, createDS());
 
 server.use(middleware());

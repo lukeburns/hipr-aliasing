@@ -1,0 +1,122 @@
+#!/usr/bin/env node
+
+const { program, Option } = require('commander');
+const inquirer = require('inquirer');
+const Network = require('hsd/lib/protocol/network.js');
+const secp256k1 = require('bcrypto/lib/secp256k1');
+const base32 = require('bs32');
+
+const { Context, promptPassphraseGetter, staticPassphraseGetter } = require('../context.js');
+const pkg = require('../package.json');
+
+const { createAddress } = require('../script');
+const { getAlias } = require('../alias');
+const { createTransaction } = require('../assign');
+const { fundMTX, signMTX } = require('../finalize');
+
+program
+  .version(pkg.version)
+  .addOption(new Option('-n, --network <network>', 'handshake network to connect to', 'main').env('ALIASING_NETWORK'))
+  .addOption(new Option('-w, --wallet-id <walletId>', 'handshake wallet ID', 'primary').env('ALIASING_WALLET_ID'))
+  .addOption(new Option('-a, --api-key <apiKey>', 'handshake wallet API key').env('ALIASING_API_KEY'))
+  .addOption(new Option('--no-passphrase', 'disable prompts for the wallet passphrase').env('ALIASING_NO_PASSPHRASE'));
+
+program
+  .command('get-alias <name>')
+  .argument('<publicKey>', 'public key responsible for aliasing')
+  .description(
+    'retrieve the alias for a name.'
+  )
+  .action(getAliasProgram);
+
+program
+  .command('assign <name>')
+  .argument('<alias>', 'alias to assign to <name>')
+  .argument('<privateKey>', 'private key to sign assignment with')
+  .description(
+    'assign an alias to a name.'
+  )
+  .action(assignProgram);
+
+program.parse(process.argv);
+
+async function getAliasProgram (name, publicKey) {
+  const context = await init();
+  const { nodeClient, network } = context;
+
+  const alias = await getAlias(name, publicKey, nodeClient, network);
+  return process.stdout.write(alias || 'null');
+}
+
+async function assignProgram (name, alias, privateKey) {
+  const context = await init();
+  const { nodeClient, network } = context;
+
+  if (typeof privateKey === 'string') {
+    privateKey = base32.decode(privateKey.trim());
+  }
+
+  const publicKey = secp256k1.publicKeyCreate(privateKey);
+
+  const existing = await getAlias(name, publicKey, nodeClient, network);
+
+  if (existing) {
+    return console.error(`${name} already assigned alias: ${existing}`);
+  }
+
+  await context.unlockWallet();
+
+  const fund = fundMTX.bind(context);
+  const sign = signMTX.bind(context);
+
+  const mtx = await createTransaction.call(context, fund, sign, name, alias, privateKey, publicKey);
+  try {
+    const tx = await context.execNode('sendrawtransaction', mtx.toHex());
+    console.log('tx id:', tx);
+  } catch (error) {
+    console.error('error sending', error);
+  }
+}
+
+async function init () {
+  const opts = program.opts();
+
+  try {
+    Network.get(opts.network);
+  } catch (e) {
+    die(`Invalid network ${opts.network}.`);
+    return;
+  }
+
+  return new Context(
+    opts.network,
+    opts.walletId,
+    opts.apiKey,
+    opts.passphrase ? promptPassphraseGetter() : staticPassphraseGetter(null)
+  );
+}
+
+async function confirm (message, shouldDie = true) {
+  const answers = await inquirer.prompt([
+    {
+      type: 'confirm',
+      name: 'confirmed',
+      message
+    }
+  ]);
+
+  if (shouldDie && !answers.confirmed) {
+    die('cancelled');
+  }
+
+  return answers.confirmed;
+}
+
+function die (msg) {
+  console.log(msg);
+  process.exit(1);
+}
+
+function log (msg) {
+  console.log(`>> ${msg}`);
+}
