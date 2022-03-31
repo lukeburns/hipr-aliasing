@@ -60,19 +60,19 @@ async function handler ({ data, protocol }, name, type, res, rc, ns) {
       const subLabel = subLabels[subLabels.length - 1];
       console.log(`[${protocol}@${ns.name}] ${name} ${type} @ ${subLabel}.${hip5data}`);
 
-      let alias = base32.encode(hashName(subLabel, hip5data));
-
+      let alias
+      
       if (protocol === '_ns') {
-        console.log('looking for alias')
+        let alias = base32.encode(hashName(subLabel, hip5data));
         alias = await getAlias(subLabel, hip5data, nodeClient, network);
-        console.log('alias?', alias)
         if (!alias) {
-          console.log('no alias :(')
           return empty.resolve(name, type);
         }
+      } else {
+        alias = base32.encode(blake3.hash(subLabel+hip5data));
       }
 
-      alias = util.fqdn(alias);
+      alias = util.fqdn(alias)
 
       const top = nameLabels.slice(nameLabels.length - (count + 1)).join('.');
       const cname = name.replace(top, alias);
