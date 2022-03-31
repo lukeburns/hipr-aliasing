@@ -61,9 +61,9 @@ async function handler ({ data, protocol }, name, type, res, rc, ns) {
       console.log(`[${protocol}@${ns.name}] ${name} ${type} @ ${subLabel}.${hip5data}`);
 
       let alias
-      
+
       if (protocol === '_ns') {
-        let alias = base32.encode(hashName(subLabel, hip5data));
+        alias = base32.encode(hashName(subLabel, hip5data));
         alias = await getAlias(subLabel, hip5data, nodeClient, network);
         if (!alias) {
           return empty.resolve(name, type);
