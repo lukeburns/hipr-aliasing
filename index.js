@@ -96,7 +96,7 @@ async function handler ({ data, protocol }, name, type, res, rc, ns) {
         rr.type = types.NS;
         rr.ttl = 0;
         rr.data = new NSRecord();
-        rr.data.ns = cname;
+        rr.data.ns = alias;
         rc.res.answer = [rr];
         signResponse(rc.res, zsk, zskPriv);
         return null;
