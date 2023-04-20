@@ -3,16 +3,18 @@
 const { program, Option } = require('commander');
 const inquirer = require('inquirer');
 const Network = require('hsd/lib/protocol/network.js');
+const Address = require('hsd/lib/primitives/address');
 const secp256k1 = require('bcrypto/lib/secp256k1');
 const base32 = require('bs32');
+const bech32 = require('bcrypto/lib/encoding/bech32');
 
 const { Context, promptPassphraseGetter, staticPassphraseGetter } = require('../context.js');
 const pkg = require('../package.json');
 
 const { createAddress } = require('../script');
 const { getAlias } = require('../alias');
-const { createTransaction } = require('../assign');
-const { fundMTX, signMTX } = require('../finalize');
+const { createTransaction, createAlias } = require('../assign');
+const { getCoins, fundMTX, signMTX } = require('../finalize');
 
 program
   .version(pkg.version)
@@ -20,6 +22,30 @@ program
   .addOption(new Option('-w, --wallet-id <walletId>', 'handshake wallet ID', 'primary').env('ALIASING_WALLET_ID'))
   .addOption(new Option('-a, --api-key <apiKey>', 'handshake wallet API key').env('ALIASING_API_KEY'))
   .addOption(new Option('--no-passphrase', 'disable prompts for the wallet passphrase').env('ALIASING_NO_PASSPHRASE'));
+
+program
+  .command('gen')
+  // .option('-n [number]', 'bulk alias generation')
+  .description(
+    'generates a random alias'
+  )
+  .action(createAliasProgram);
+
+program
+  .command('keygen')
+  .description(
+    'generates keypair for alias assignment'
+  )
+  .action(generateKeysProgram);
+
+program
+  .command('assign <name>')
+  .argument('<alias>', 'alias to assign to <name>')
+  .argument('<privateKey>', 'private key to sign assignment with')
+  .description(
+    'assign an alias to a name for <publicKey>.'
+  )
+  .action(assignProgram);
 
 program
   .command('get-alias <name>')
@@ -30,15 +56,48 @@ program
   .action(getAliasProgram);
 
 program
-  .command('assign <name>')
-  .argument('<alias>', 'alias to assign to <name>')
-  .argument('<privateKey>', 'private key to sign assignment with')
-  .description(
-    'assign an alias to a name.'
-  )
-  .action(assignProgram);
+  .command('from-address')
+  .argument('<nulladdress>')
+  .description('parse nulldata address')
+  .action(parseNulldataProgram);
+
+program
+  .command('to-address')
+  .argument('<data>')
+  .description('data to nulldata address')
+  .action(dataToAddressProgram);
 
 program.parse(process.argv);
+
+async function parseNulldataProgram (nulldata) {
+  try {
+    console.log(bech32.decode(nulldata)[2].toString())
+  } catch (e) {
+    console.log(e)
+  }
+}
+
+async function dataToAddressProgram (data) {
+  if (typeof data === 'string') {
+    data = Buffer.from(data);
+  }
+  try {
+    console.log(Address.fromNulldata(data))
+  } catch (e) {
+    console.log(e)
+  }
+}
+
+async function generateKeysProgram () {
+  const privateKey = secp256k1.privateKeyGenerate();
+  const publicKey = secp256k1.publicKeyCreate(privateKey);
+  console.log('<privateKey> =', base32.encode(privateKey))
+  console.log('<publicKey> =', base32.encode(publicKey))
+}
+
+async function createAliasProgram () {
+  process.stdout.write(createAlias())
+}
 
 async function getAliasProgram (name, publicKey) {
   const context = await init();

@@ -1,3 +1,4 @@
+const Coin = require('hsd/lib/primitives/coin.js');
 const Keyring = require('hsd/lib/primitives/keyring.js');
 const Output = require('hsd/lib/primitives/output.js');
 const rules = require('hsd/lib/covenants/rules.js');
@@ -30,7 +31,7 @@ async function fundMTX (mtx, coins, changeAddress) {
   const feeRes = await this.execNode('estimatesmartfee', 10);
   const rate = Math.max(Number(feeRes.fee), 5000);
 
-  console.log('change address:', changeAddress);
+  // console.log('change address:', changeAddress);
   await mtx.fund(coins, {
     rate,
     changeAddress,
